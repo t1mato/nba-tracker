@@ -1,0 +1,1 @@
+"""League-wide aggregate trends."""

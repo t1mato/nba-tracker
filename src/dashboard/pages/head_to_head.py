@@ -1,0 +1,1 @@
+"""Two-team comparison view."""
