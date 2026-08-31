@@ -1,0 +1,27 @@
+# Local dev Postgres. Mirrors the hosted free tier (Supabase/Neon) we move to in
+# roadmap step 4, so the only thing that changes later is DATABASE_URL.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nba_tracker_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nba}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nba_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-nba_tracker}
+    ports:
+      # Host 5432 -> container 5432. Change the host side if you ever run a
+      # second Postgres locally.
+      - "5432:5432"
+    volumes:
+      # Named volume: data survives `docker compose down`. Use `down -v` to wipe.
+      - nba_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Lets us (and CI) wait for "actually accepting queries", not just "started".
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nba} -d ${POSTGRES_DB:-nba_tracker}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  nba_pgdata:
