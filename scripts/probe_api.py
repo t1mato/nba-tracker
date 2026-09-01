@@ -2,9 +2,26 @@
 
     python scripts/probe_api.py
 
-Answers one question — does `nba_api` work from this machine, or is this IP
-blocked? Run it locally and it should pass; the point is running it on a GitHub
-Actions runner, whose datacenter IP stats.nba.com may reject.
+Answers one question — is this machine's IP blocked by stats.nba.com? Run it
+locally and it should pass; the point is running it somewhere you are
+*evaluating* as an ingestion host.
+
+Confirmed results so far:
+  * laptop (residential IP)      HTTP 200, 0.3s
+  * GitHub-hosted runner (Azure) ReadTimeout after 60s, twice, two IPs
+
+Note the failure shape: not a 403. The TLS handshake succeeds and the server
+then never replies. Blocked infrastructure often will not tell you it blocked
+you.
+
+To run on a bare host with no project checkout:
+
+    pip install requests
+    curl -sO https://raw.githubusercontent.com/t1mato/nba-tracker/main/scripts/probe_api.py
+    python probe_api.py
+
+nba_api is optional — without it the script issues the same URLs with the same
+headers via plain requests, and returns byte-identical payloads.
 
 Why this bypasses src/ingestion/nba_client.py
 ---------------------------------------------
@@ -28,10 +45,70 @@ import sys
 import time
 
 import requests
-from nba_api.stats.endpoints import boxscoretraditionalv3, leaguegamefinder
-from nba_api.stats.library.http import NBAStatsHTTP
+
+# nba_api is optional here on purpose. The most useful place to run this probe
+# is a bare VM you are evaluating as an ingestion host, where `pip install
+# nba_api` drags in pandas for a two-call diagnostic. Without it we fall back to
+# hitting the same URLs with the same headers via plain requests — which is all
+# nba_api does anyway.
+try:
+    from nba_api.stats.endpoints import boxscoretraditionalv3, leaguegamefinder
+    from nba_api.stats.library.http import NBAStatsHTTP
+    HAVE_NBA_API = True
+except ImportError:
+    HAVE_NBA_API = False
 
 TIMEOUT = 60
+
+BASE_URL = "https://stats.nba.com/stats/{endpoint}"
+
+# Copied verbatim from nba_api.stats.library.http.STATS_HEADERS. stats.nba.com
+# rejects requests without a browser-shaped header set, so a bare requests.get
+# would fail for reasons unrelated to the IP and give a false positive.
+STATS_HEADERS = {
+    "Host": "stats.nba.com",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Referer": "https://www.nba.com/",
+    "Pragma": "no-cache",
+    "Cache-Control": "no-cache",
+    "Sec-Ch-Ua": '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Fetch-Dest": "empty",
+}
+
+# The parameters each endpoint requires, for the no-nba_api path. stats.nba.com
+# is strict: every documented parameter must be present, even when empty.
+FALLBACK_REQUESTS = {
+    "leaguegamefinder": {
+        "Conference": "", "DateFrom": "", "DateTo": "", "Division": "",
+        "DraftNumber": "", "DraftRound": "", "DraftTeamID": "", "DraftYear": "",
+        "EqAST": "", "EqBLK": "", "EqDD": "", "EqDREB": "", "EqFG3A": "",
+        "EqFG3M": "", "EqFG3_PCT": "", "EqFGA": "", "EqFGM": "", "EqFG_PCT": "",
+        "EqFTA": "", "EqFTM": "", "EqFT_PCT": "", "EqMINUTES": "", "EqOREB": "",
+        "EqPF": "", "EqPTS": "", "EqREB": "", "EqSTL": "", "EqTD": "", "EqTOV": "",
+        "GtAST": "", "GtBLK": "", "GtDD": "", "GtDREB": "", "GtFG3A": "",
+        "GtFG3M": "", "GtFG3_PCT": "", "GtFGA": "", "GtFGM": "", "GtFG_PCT": "",
+        "GtFTA": "", "GtFTM": "", "GtFT_PCT": "", "GtMINUTES": "", "GtOREB": "",
+        "GtPF": "", "GtPTS": "", "GtREB": "", "GtSTL": "", "GtTD": "", "GtTOV": "",
+        "LeagueID": "00", "Location": "", "LtAST": "", "LtBLK": "", "LtDD": "",
+        "LtDREB": "", "LtFG3A": "", "LtFG3M": "", "LtFG3_PCT": "", "LtFGA": "",
+        "LtFGM": "", "LtFG_PCT": "", "LtFTA": "", "LtFTM": "", "LtFT_PCT": "",
+        "LtMINUTES": "", "LtOREB": "", "LtPF": "", "LtPTS": "", "LtREB": "",
+        "LtSTL": "", "LtTD": "", "LtTOV": "", "Outcome": "", "PORound": "",
+        "PlayerID": "", "PlayerOrTeam": "T", "RookieYear": "", "Season": "2025-26",
+        "SeasonSegment": "", "SeasonType": "", "StarterBench": "", "TeamID": "",
+        "VsConference": "", "VsDivision": "", "VsTeamID": "", "YearsExperience": "",
+    },
+    "boxscoretraditionalv3": {
+        "GameID": "0022500001", "LeagueID": "00", "endPeriod": 0, "endRange": 28800,
+        "rangeType": 0, "startPeriod": 0, "startRange": 0,
+    },
+}
 
 # A real 2025-26 regular season game (opening night), so a zero-row result means
 # something is wrong rather than "nothing was scheduled".
@@ -106,22 +183,61 @@ def probe(label: str, endpoint_class, **kwargs) -> bool:
     return True
 
 
+def probe_without_nba_api(label: str, endpoint: str) -> bool:
+    """Same request, issued with plain requests. Used when nba_api is absent."""
+    print(f"\n--- {label} ---")
+
+    started = time.monotonic()
+    try:
+        response = requests.get(
+            BASE_URL.format(endpoint=endpoint),
+            params=FALLBACK_REQUESTS[endpoint],
+            headers=STATS_HEADERS,
+            timeout=TIMEOUT,
+        )
+    except Exception as exc:
+        print(f"  FAILED before a response: {type(exc).__name__}: {exc}")
+        return False
+
+    elapsed = time.monotonic() - started
+    print(f"  HTTP {response.status_code}  ({elapsed:.1f}s, {len(response.text)} bytes)")
+
+    try:
+        payload = response.json()
+    except ValueError:
+        print("  body is NOT valid JSON — this is what the pipeline would retry 4x")
+        print(f"  first 300 bytes: {response.text[:300]!r}")
+        return False
+
+    print(f"  OK — {_row_count(payload)}")
+    return True
+
+
 def main() -> int:
     print(f"egress IP: {egress_ip()}")
+    if not HAVE_NBA_API:
+        print("nba_api not installed — using the plain-requests fallback "
+              "(same URLs, same headers)")
 
-    results = [
-        probe(
-            "leaguegamefinder (game discovery)",
-            leaguegamefinder.LeagueGameFinder,
-            season_nullable=SAMPLE_SEASON,
-            league_id_nullable="00",
-        ),
-        probe(
-            "boxscoretraditionalv3 (per-game stats)",
-            boxscoretraditionalv3.BoxScoreTraditionalV3,
-            game_id=SAMPLE_GAME_ID,
-        ),
-    ]
+    if HAVE_NBA_API:
+        results = [
+            probe(
+                "leaguegamefinder (game discovery)",
+                leaguegamefinder.LeagueGameFinder,
+                season_nullable=SAMPLE_SEASON,
+                league_id_nullable="00",
+            ),
+            probe(
+                "boxscoretraditionalv3 (per-game stats)",
+                boxscoretraditionalv3.BoxScoreTraditionalV3,
+                game_id=SAMPLE_GAME_ID,
+            ),
+        ]
+    else:
+        results = [
+            probe_without_nba_api("leaguegamefinder (game discovery)", "leaguegamefinder"),
+            probe_without_nba_api("boxscoretraditionalv3 (per-game stats)", "boxscoretraditionalv3"),
+        ]
 
     print()
     if all(results):
