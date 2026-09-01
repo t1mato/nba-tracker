@@ -27,6 +27,7 @@ a machine with nothing set up.
 
 from __future__ import annotations
 
+import os
 import urllib.parse
 
 import psycopg2
@@ -45,13 +46,24 @@ def _test_db_url(base: str) -> str:
     return urllib.parse.urlunsplit(parts._replace(path=f"/{TEST_DB}"))
 
 
+def _base_url() -> str:
+    """Which server to build the throwaway test database on.
+
+    TEST_DATABASE_URL wins because these tests CREATE and DROP a database, and
+    a managed warehouse generally will not allow that — Neon's free tier does
+    not. So the warehouse can live on Neon while the tests keep using local
+    Postgres. Importing config above has already loaded .env.
+    """
+    return os.environ.get("TEST_DATABASE_URL") or get_database_url()
+
+
 @pytest.fixture(scope="session")
 def warehouse():
     """A fresh, empty warehouse built by the real DDL. Dropped afterwards."""
     try:
-        base = get_database_url()
+        base = _base_url()
     except RuntimeError as exc:
-        pytest.skip(f"no DATABASE_URL: {exc}")
+        pytest.skip(f"no database URL configured: {exc}")
 
     try:
         admin = psycopg2.connect(base)

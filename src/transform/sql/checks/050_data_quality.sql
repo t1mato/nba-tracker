@@ -128,6 +128,25 @@ WHERE (off_rating IS NOT NULL AND (off_rating < 70 OR off_rating > 160))
 
 UNION ALL
 
+-- Both teams in a game are assigned the SAME possessions estimate (the two
+-- sides' estimates are averaged in 030_load_facts.sql, because both teams have
+-- essentially equal possessions by construction). That decision has a testable
+-- consequence: one team's defensive rating must exactly equal its opponent's
+-- offensive rating, since both are "points team B scored per 100 possessions"
+-- over the same denominator.
+--
+-- Nothing else checks this. Every rating could drift together and stay inside
+-- the range guards above; this catches the denominators diverging.
+SELECT 'team_off_def_mirror', 'error', count(*),
+       'team-games where def_rating <> the opponent off_rating'
+FROM fact_team_game_stats a
+JOIN fact_team_game_stats b
+  ON b.game_id = a.game_id AND b.team_id = a.opponent_id
+WHERE a.def_rating IS NOT NULL AND b.off_rating IS NOT NULL
+  AND abs(a.def_rating - b.off_rating) > 0.01
+
+UNION ALL
+
 -- --- warnings: real signals, but not reasons to fail a run ------------------
 
 -- Partial truncation could leave a team with 6 or 7 players — legal, so not an
