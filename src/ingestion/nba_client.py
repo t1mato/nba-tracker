@@ -17,7 +17,12 @@ import logging
 import time
 
 import pandas as pd
-from nba_api.stats.endpoints import boxscoretraditionalv3, leaguegamefinder
+from nba_api.stats.endpoints import (
+    boxscoretraditionalv3,
+    commonteamroster,
+    leaguegamefinder,
+    leaguestandingsv3,
+)
 
 from src.ingestion.config import (
     BACKOFF_BASE_SECONDS,
@@ -131,6 +136,31 @@ def fetch_player_box(game_id: str) -> pd.DataFrame:
         f"boxscorev3({game_id})",
         lambda: boxscoretraditionalv3.BoxScoreTraditionalV3(
             game_id=game_id,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        ).get_data_frames()[0],
+    )
+
+
+def fetch_standings(season: str) -> pd.DataFrame:
+    """Conference and division for all 30 teams. One call."""
+    log.info("fetching standings for %s", season)
+
+    return _call(
+        f"leaguestandings({season})",
+        lambda: leaguestandingsv3.LeagueStandingsV3(
+            season=season,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        ).get_data_frames()[0],
+    )
+
+
+def fetch_team_roster(team_id: int, season: str) -> pd.DataFrame:
+    """One team's roster, including real player positions."""
+    return _call(
+        f"commonteamroster({team_id})",
+        lambda: commonteamroster.CommonTeamRoster(
+            team_id=team_id,
+            season=season,
             timeout=REQUEST_TIMEOUT_SECONDS,
         ).get_data_frames()[0],
     )
