@@ -6,9 +6,16 @@ Answers one question — is this machine's IP blocked by stats.nba.com? Run it
 locally and it should pass; the point is running it somewhere you are
 *evaluating* as an ingestion host.
 
-Confirmed results so far:
+Confirmed results (2026-09-01):
   * laptop (residential IP)      HTTP 200, 0.3s
   * GitHub-hosted runner (Azure) ReadTimeout after 60s, twice, two IPs
+  * Oracle Cloud always-free VM  ReadTimeout after 60s
+
+Two independent clouds, three datacenter IPs, one verdict: stats.nba.com
+blocks datacenter ranges broadly. Ingestion has to run from a residential
+connection. Note the probe's own control — the "egress IP" line is a
+successful HTTPS call to a different host, so a timeout below it means
+stats.nba.com specifically, not a broken network.
 
 Note the failure shape: not a 403. The TLS handshake succeeds and the server
 then never replies. Blocked infrastructure often will not tell you it blocked
