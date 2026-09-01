@@ -10,8 +10,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Project root = two levels up from this file (src/ingestion/config.py).
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# Project root = three levels up from src/nba_tracker/ingestion/config.py.
+# Only used to locate .env, which is a development convenience: in CI and in
+# the scheduled job the variable is exported directly and no .env exists.
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 # Load .env from the project root explicitly. Without the path, python-dotenv
 # guesses from the caller's stack frame, which breaks when the script is invoked

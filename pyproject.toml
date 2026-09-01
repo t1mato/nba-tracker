@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nba-tracker"
+version = "0.1.0"
+description = "Ingests NBA box scores into a dimensional Postgres warehouse and serves them through a Streamlit dashboard"
+readme = "README.md"
+requires-python = ">=3.14"
+
+# Pinned rather than ranged: the pipeline runs unattended, and a surprise minor
+# release breaking a nightly job is exactly the failure this project is built to
+# avoid. nba_api in particular wraps undocumented endpoints and is the most
+# likely to shift under us.
+dependencies = [
+    "nba_api==1.11.4",
+    "pandas==3.0.5",
+    "psycopg2-binary==2.9.12",
+    "python-dotenv==1.2.3",
+    "streamlit==1.62.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "jupyterlab==4.6.3",
+    "ipykernel==7.3.0",
+]
+
+# Console scripts, so the scheduled job and CI call a stable name instead of
+# `python -m ...` from a directory they have to be standing in first.
+[project.scripts]
+nba-ingest = "nba_tracker.ingestion.ingest_games:main"
+nba-ingest-reference = "nba_tracker.ingestion.ingest_reference:main"
+nba-transform = "nba_tracker.transform.run_transforms:main"
+nba-checks = "nba_tracker.transform.run_checks:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# The transform layer reads its .sql files at runtime, so they have to travel
+# with the package rather than being left behind as repo-only files.
+[tool.setuptools.package-data]
+nba_tracker = ["transform/sql/**/*.sql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"

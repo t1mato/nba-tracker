@@ -1,7 +1,0 @@
-# Runtime dependencies for the ingestion + transform + dashboard pipeline.
-# Pinned so GitHub Actions installs exactly what works locally.
-nba_api==1.11.4
-pandas==3.0.5
-psycopg2-binary==2.9.12
-python-dotenv==1.2.3
-streamlit==1.62.0

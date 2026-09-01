@@ -1,9 +1,9 @@
 """Ingest NBA box scores into the staging tables.
 
-    python -m src.ingestion.ingest_games --catch-up       # the scheduled job
-    python -m src.ingestion.ingest_games                  # yesterday
-    python -m src.ingestion.ingest_games 2026-01-15       # one specific date
-    python -m src.ingestion.ingest_games --season 2025-26 # backfill a season
+    python -m nba_tracker.ingestion.ingest_games --catch-up       # the scheduled job
+    python -m nba_tracker.ingestion.ingest_games                  # yesterday
+    python -m nba_tracker.ingestion.ingest_games 2026-01-15       # one specific date
+    python -m nba_tracker.ingestion.ingest_games --season 2025-26 # backfill a season
 
 --catch-up is what the scheduled job runs: it works out the current season,
 lists its games in one call, and fetches only the ones the warehouse does not
@@ -26,8 +26,8 @@ import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_values
 
-from src.ingestion import nba_client
-from src.ingestion.config import current_season, get_database_url, is_in_scope
+from nba_tracker.ingestion import nba_client
+from nba_tracker.ingestion.config import current_season, get_database_url, is_in_scope
 
 log = logging.getLogger("ingest")
 

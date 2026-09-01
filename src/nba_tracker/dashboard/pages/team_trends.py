@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.dashboard import charts, queries
+from nba_tracker.dashboard import charts, queries
 
 st.title("Team trends")
 

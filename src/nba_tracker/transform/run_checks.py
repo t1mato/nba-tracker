@@ -1,7 +1,7 @@
 """Run the data quality checks and fail loudly if the warehouse is wrong.
 
-    python -m src.transform.run_checks           # exit 1 if any error check fails
-    python -m src.transform.run_checks --strict  # warnings fail the run too
+    python -m nba_tracker.transform.run_checks           # exit 1 if any error check fails
+    python -m nba_tracker.transform.run_checks --strict  # warnings fail the run too
 
 Separate from run_transforms.py on purpose. That script's job is to *build* the
 warehouse; this one's job is to *judge* it. Keeping them apart means a failing
@@ -23,11 +23,12 @@ from pathlib import Path
 
 import psycopg2
 
-from src.ingestion.config import PROJECT_ROOT, get_database_url
+from nba_tracker.ingestion.config import get_database_url
 
 log = logging.getLogger("checks")
 
-CHECKS_SQL = PROJECT_ROOT / "src" / "transform" / "sql" / "checks" / "050_data_quality.sql"
+# Package-relative, so it resolves whether installed or run from a checkout.
+CHECKS_SQL = Path(__file__).resolve().parent / "sql" / "checks" / "050_data_quality.sql"
 
 
 def run_checks(conn) -> list[tuple[str, str, int, str]]:

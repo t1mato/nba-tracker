@@ -24,7 +24,7 @@ from nba_api.stats.endpoints import (
     leaguestandingsv3,
 )
 
-from src.ingestion.config import (
+from nba_tracker.ingestion.config import (
     BACKOFF_BASE_SECONDS,
     MAX_RETRIES,
     REQUEST_DELAY_SECONDS,

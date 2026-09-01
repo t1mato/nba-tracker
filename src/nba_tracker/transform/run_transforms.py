@@ -1,7 +1,7 @@
 """Run the SQL transform layer in order.
 
-    python -m src.transform.run_transforms            # schema + transforms
-    python -m src.transform.run_transforms --list     # show what would run
+    python -m nba_tracker.transform.run_transforms            # schema + transforms
+    python -m nba_tracker.transform.run_transforms --list     # show what would run
 
 Files run in filename order, so the numeric prefixes control sequencing:
   staging/    tables the ingestion writes into
@@ -22,11 +22,13 @@ from pathlib import Path
 
 import psycopg2
 
-from src.ingestion.config import PROJECT_ROOT, get_database_url
+from nba_tracker.ingestion.config import get_database_url
 
 log = logging.getLogger("transform")
 
-SQL_ROOT = PROJECT_ROOT / "src" / "transform" / "sql"
+# Resolved against this package rather than the repo root, so the SQL is
+# found the same way whether the project is installed or run from a checkout.
+SQL_ROOT = Path(__file__).resolve().parent / "sql"
 STAGES = ("staging", "schema", "transforms")
 
 
@@ -73,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.list:
         for path in files:
-            print(f"  {path.relative_to(PROJECT_ROOT)}")
+            print(f"  {path.relative_to(SQL_ROOT)}")
         return 0
 
     with psycopg2.connect(get_database_url()) as conn:

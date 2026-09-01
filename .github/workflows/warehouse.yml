@@ -43,7 +43,7 @@ jobs:
           cache: pip
 
       # No dev dependencies: this job runs the pipeline, not the tests.
-      - run: pip install -r requirements.txt
+      - run: pip install -e .
 
       - name: Fail early if the secret is missing
         # Without this the transform step fails with a confusing "DATABASE_URL
@@ -56,13 +56,13 @@ jobs:
           echo "DATABASE_URL is set (${#DATABASE_URL} chars)"
 
       - name: Rebuild the star schema
-        run: python -m src.transform.run_transforms
+        run: nba-transform
 
       - name: Data quality checks
         # Deliberately the last word. The transforms above will happily rebuild
         # a warehouse out of bad staging data and report success; this is what
         # turns "the job ran" into "the data is right".
-        run: python -m src.transform.run_checks
+        run: nba-checks
 
       - name: Summarise
         if: always()

@@ -1,15 +1,15 @@
 # 🏀 NBA Analytics Data Warehouse
 
 [![CI](https://img.shields.io/github/actions/workflow/status/t1mato/nba-tracker/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/t1mato/nba-tracker/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-72_passing-brightgreen?logo=pytest&logoColor=white)](tests/)
-[![Python](https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white)](requirements.txt)
+[![Tests](https://img.shields.io/badge/tests-75_passing-brightgreen?logo=pytest&logoColor=white)](tests/)
+[![Python](https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![Postgres](https://img.shields.io/badge/postgres-18_(Neon)-4169E1?logo=postgresql&logoColor=white)](https://neon.tech)
-[![Streamlit](https://img.shields.io/badge/streamlit-1.62-FF4B4B?logo=streamlit&logoColor=white)](src/dashboard/)
+[![Streamlit](https://img.shields.io/badge/streamlit-1.62-FF4B4B?logo=streamlit&logoColor=white)](src/nba_tracker/dashboard/)
 
 [![Games](https://img.shields.io/badge/games-1%2C322-orange)](#data-sources)
 [![Player rows](https://img.shields.io/badge/player--game_rows-28%2C716-orange)](#data-sources)
 [![Season](https://img.shields.io/badge/season-2025--26-orange)](#data-sources)
-[![Quality checks](https://img.shields.io/badge/quality_checks-13-blueviolet)](src/transform/sql/checks/050_data_quality.sql)
+[![Quality checks](https://img.shields.io/badge/quality_checks-13-blueviolet)](src/nba_tracker/transform/sql/checks/050_data_quality.sql)
 
 An end-to-end pipeline that ingests NBA box scores, models them into a dimensional
 warehouse, and serves the result through a Streamlit dashboard.
@@ -178,7 +178,8 @@ raising:
 | Transform | Hand-written SQL |
 | Orchestration | `launchd` (ingest) + GitHub Actions (transform, checks) |
 | Dashboard | Streamlit |
-| Testing | pytest — 72 tests |
+| Testing | pytest — 75 tests |
+| Packaging | `pyproject.toml` (PEP 621), installed with `pip install -e .` |
 
 Two databases, for one specific reason: the transform tests `CREATE` and `DROP` a
 throwaway database per run, and Neon's free tier doesn't permit `CREATE DATABASE`. So
@@ -192,35 +193,51 @@ are noted stretch goals.
 
 ## Project Structure
 
+Standard `src/` layout — the package is installed (`pip install -e .`) rather than
+imported by path, so nothing depends on which directory you run it from.
+
 ```
+├── pyproject.toml                 # deps, console scripts, pytest config
 ├── src/
-│   ├── ingestion/
-│   │   ├── ingest_games.py        # box scores → staging (date | --season | --catch-up)
-│   │   ├── ingest_reference.py    # teams and player positions
-│   │   ├── nba_client.py          # rate limiting, retry-with-backoff
-│   │   └── config.py              # DATABASE_URL resolution
-│   ├── transform/
-│   │   ├── run_transforms.py      # executes the SQL below, in order
-│   │   ├── run_checks.py          # runs the checks, fails loud
-│   │   └── sql/
-│   │       ├── staging/           # 001-002  raw landing tables
-│   │       ├── schema/            # 010      star schema DDL
-│   │       ├── transforms/        # 020-030  load dimensions, then facts
-│   │       └── checks/            # 050      13 data quality checks
-│   └── dashboard/
-│       ├── app.py                 # entry point + navigation
-│       ├── queries.py             # all SQL, cached
-│       ├── charts.py              # shared chart helpers
-│       └── pages/                 # team trends, player deep dive
+│   └── nba_tracker/
+│       ├── ingestion/
+│       │   ├── ingest_games.py    # box scores → staging (date | --season | --catch-up)
+│       │   ├── ingest_reference.py# teams and player positions
+│       │   ├── nba_client.py      # rate limiting, retry-with-backoff
+│       │   └── config.py          # DATABASE_URL, season + game-type rules
+│       ├── transform/
+│       │   ├── run_transforms.py  # executes the SQL below, in order
+│       │   ├── run_checks.py      # runs the checks, fails loud
+│       │   └── sql/
+│       │       ├── staging/       # 001-002  raw landing tables
+│       │       ├── schema/        # 010      star schema DDL
+│       │       ├── transforms/    # 020-030  load dimensions, then facts
+│       │       └── checks/        # 050      13 data quality checks
+│       └── dashboard/
+│           ├── app.py             # entry point + navigation
+│           ├── queries.py         # all SQL, cached
+│           ├── charts.py          # shared chart helpers
+│           └── pages/             # team trends, player deep dive
 ├── scripts/
 │   ├── nightly.sh                 # ingest, then trigger the rebuild
 │   ├── install_launchd.sh         # generates + loads the launchd plist
 │   └── probe_api.py               # is stats.nba.com reachable from here?
-├── tests/                         # 72 tests
+├── tests/                         # 75 tests
 ├── .github/workflows/             # ci · warehouse · probe-nba-api
 ├── notebooks/                     # API exploration findings
 └── docker-compose.yml             # local Postgres 16 (test database)
 ```
+
+**Commands** — installed as console scripts, so they work from any directory:
+
+| Command | Does |
+|---|---|
+| `nba-ingest 2026-01-15` | Ingest one date |
+| `nba-ingest --season 2025-26` | Backfill a season |
+| `nba-ingest --catch-up` | Fetch whatever is missing (what the nightly job runs) |
+| `nba-transform` | Rebuild the star schema |
+| `nba-checks` | Run the 13 data quality checks |
+| `streamlit run src/nba_tracker/dashboard/app.py` | Launch the dashboard |
 
 ---
 
@@ -230,8 +247,8 @@ are noted stretch goals.
 |---|---|
 | [`notebooks/01_api_exploration.ipynb`](notebooks/01_api_exploration.ipynb) | Endpoint exploration — where the V2/V3 and `MATCHUP` findings came from |
 | [`scripts/probe_api.py`](scripts/probe_api.py) | Reachability probe; run it via the **Probe nba_api** workflow to re-test the blocked-IP finding |
-| [`src/transform/sql/checks/050_data_quality.sql`](src/transform/sql/checks/050_data_quality.sql) | All 13 checks, each with a comment on what it catches and why |
-| [`src/transform/sql/schema/010_star_schema.sql`](src/transform/sql/schema/010_star_schema.sql) | Full DDL with constraints |
+| [`src/nba_tracker/transform/sql/checks/050_data_quality.sql`](src/nba_tracker/transform/sql/checks/050_data_quality.sql) | All 13 checks, each with a comment on what it catches and why |
+| [`src/nba_tracker/transform/sql/schema/010_star_schema.sql`](src/nba_tracker/transform/sql/schema/010_star_schema.sql) | Full DDL with constraints |
 | [`.github/workflows/`](.github/workflows/) | CI, warehouse rebuild, and probe workflows |
 | [`.env.example`](.env.example) | Every environment variable, annotated |
 

@@ -18,7 +18,7 @@ import pandas as pd
 import psycopg2
 import streamlit as st
 
-from src.ingestion.config import get_database_url
+from nba_tracker.ingestion.config import get_database_url
 
 ROLLING_WINDOW = 10
 

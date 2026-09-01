@@ -16,7 +16,10 @@
 set -uo pipefail   # deliberately NOT -e: failures are handled, not fatal-by-default
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PYTHON="$PROJECT_ROOT/venv/bin/python"
+# The console script from the editable install (see pyproject.toml), not
+# `python -m ...`: it resolves the package itself, so this no longer depends on
+# the job happening to start in the project root.
+NBA_INGEST="$PROJECT_ROOT/venv/bin/nba-ingest"
 
 # launchd gives a job /usr/bin:/bin:/usr/sbin:/sbin and nothing else, so gh
 # (Homebrew) is invisible unless we say where it is. This is the single most
@@ -28,8 +31,9 @@ log() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 log "=== nightly run starting ==="
 cd "$PROJECT_ROOT" || { log "FATAL: cannot cd to $PROJECT_ROOT"; exit 1; }
 
-if [ ! -x "$PYTHON" ]; then
-    log "FATAL: no venv python at $PYTHON"
+if [ ! -x "$NBA_INGEST" ]; then
+    log "FATAL: no nba-ingest at $NBA_INGEST"
+    log "       run: venv/bin/pip install -e '.[dev]'"
     exit 1
 fi
 
@@ -37,7 +41,7 @@ fi
 # --catch-up derives the current season and fetches only games we lack, so a
 # missed day is collected by the next run instead of becoming a permanent hole.
 log "ingesting (catch-up)..."
-"$PYTHON" -m src.ingestion.ingest_games --catch-up
+"$NBA_INGEST" --catch-up
 INGEST_STATUS=$?
 
 if [ $INGEST_STATUS -ne 0 ]; then

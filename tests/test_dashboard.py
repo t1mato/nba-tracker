@@ -27,7 +27,7 @@ import collections
 import psycopg2
 import pytest
 
-from src.dashboard import queries
+from nba_tracker.dashboard import queries
 
 # psycopg2 exposes cursor.description entries with a .name attribute; the
 # dashboard reads that, so the fake has to provide it too.

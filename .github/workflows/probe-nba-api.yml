@@ -24,12 +24,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-          # Installing the real requirements.txt (not just nba_api) doubles as a
+          # Installing the real dependency set (not just nba_api) doubles as a
           # check that our pins actually resolve on a runner — something the
           # nightly job will need anyway.
           cache: pip
 
-      - run: pip install -r requirements.txt
+      - run: pip install -e .
 
       - name: Probe stats.nba.com
         run: python scripts/probe_api.py

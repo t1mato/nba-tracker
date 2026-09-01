@@ -14,14 +14,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.ingestion import nba_client
-from src.ingestion.config import (
+from nba_tracker.ingestion import nba_client
+from nba_tracker.ingestion.config import (
     GAME_TYPE_BY_PREFIX,
     current_season,
     game_type,
     is_in_scope,
 )
-from src.ingestion.ingest_games import (
+from nba_tracker.ingestion.ingest_games import (
     GAMES_COLUMNS,
     PLAYER_BOX_COLUMNS,
     _clean,

@@ -53,7 +53,7 @@ jobs:
           python-version: "3.14"
           cache: pip
 
-      - run: pip install -r requirements-dev.txt
+      - run: pip install -e ".[dev]"
 
       - name: Run tests
         run: python -m pytest tests/ -v

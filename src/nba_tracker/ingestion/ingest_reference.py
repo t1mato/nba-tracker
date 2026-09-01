@@ -1,7 +1,7 @@
 """Ingest slow-changing reference data: team conference/division, player positions.
 
-    python -m src.ingestion.ingest_reference               # current season
-    python -m src.ingestion.ingest_reference --season 2025-26
+    python -m nba_tracker.ingestion.ingest_reference               # current season
+    python -m nba_tracker.ingestion.ingest_reference --season 2025-26
 
 31 API calls total (1 standings + 30 rosters), so this is run occasionally
 rather than nightly.
@@ -15,9 +15,9 @@ import sys
 
 import psycopg2
 
-from src.ingestion import nba_client
-from src.ingestion.config import get_database_url
-from src.ingestion.ingest_games import _to_rows, _upsert
+from nba_tracker.ingestion import nba_client
+from nba_tracker.ingestion.config import get_database_url
+from nba_tracker.ingestion.ingest_games import _to_rows, _upsert
 
 log = logging.getLogger("ingest-ref")
 

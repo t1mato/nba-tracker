@@ -33,8 +33,8 @@ import urllib.parse
 import psycopg2
 import pytest
 
-from src.ingestion.config import get_database_url
-from src.transform.run_transforms import sql_files
+from nba_tracker.ingestion.config import get_database_url
+from nba_tracker.transform.run_transforms import sql_files
 
 TEST_DB = "nba_tracker_test"
 
