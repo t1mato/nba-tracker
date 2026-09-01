@@ -1,3 +1,6 @@
+# Local project brief — kept out of the public repo
+CLAUDE.md
+
 # Secrets — never commit real credentials (.env.example is the committed template)
 .env
 .env.local
