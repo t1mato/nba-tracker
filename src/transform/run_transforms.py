@@ -30,10 +30,15 @@ SQL_ROOT = PROJECT_ROOT / "src" / "transform" / "sql"
 STAGES = ("staging", "schema", "transforms")
 
 
-def sql_files() -> list[Path]:
-    """Every .sql file, ordered by stage then filename."""
+def sql_files(stages: tuple[str, ...] = STAGES) -> list[Path]:
+    """Every .sql file, ordered by stage then filename.
+
+    `stages` is narrowable so a caller can apply the DDL and the transforms as
+    separate steps — the tests build an empty warehouse first, load fixtures,
+    and only then run the transforms over them.
+    """
     files: list[Path] = []
-    for stage in STAGES:
+    for stage in stages:
         files.extend(sorted((SQL_ROOT / stage).glob("*.sql")))
     return files
 
