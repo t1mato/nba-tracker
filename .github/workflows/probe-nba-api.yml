@@ -1,0 +1,35 @@
+# Diagnostic only — no schedule, no secrets, never touches the database.
+#
+# Everything in the nightly pipeline rests on one untested assumption: that
+# stats.nba.com answers a GitHub Actions runner. Runners have datacenter IPs,
+# which stats.nba.com is known to block. This workflow settles that question on
+# its own, before the scheduled job is built on top of the answer.
+#
+# Run it from the Actions tab -> "Probe nba_api" -> "Run workflow".
+name: Probe nba_api
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    # The probe makes two API calls. If it is hanging past this, the answer is
+    # "blocked" anyway.
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          # Installing the real requirements.txt (not just nba_api) doubles as a
+          # check that our pins actually resolve on a runner — something the
+          # nightly job will need anyway.
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Probe stats.nba.com
+        run: python scripts/probe_api.py
