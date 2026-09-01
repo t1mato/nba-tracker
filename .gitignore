@@ -27,6 +27,9 @@ htmlcov/
 # Jupyter autosave sidecar
 .ipynb_checkpoints/
 
+# Browser-automation artifacts (screenshots, console logs)
+.playwright-mcp/
+
 # macOS / editor cruft
 .DS_Store
 .idea/
