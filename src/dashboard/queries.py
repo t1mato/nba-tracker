@@ -29,23 +29,50 @@ def _connection():
     return psycopg2.connect(get_database_url())
 
 
+# psycopg2 raises these two when the socket is gone rather than when the SQL is
+# wrong: OperationalError for a connection dropped mid-query, InterfaceError for
+# one already known to be closed.
+_CONNECTION_LOST = (psycopg2.OperationalError, psycopg2.InterfaceError)
+
+
+def _execute(conn, sql: str, params: tuple):
+    """One attempt. Returns (columns, rows) or raises."""
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        columns = [c.name for c in cur.description]
+        rows = cur.fetchall()
+    conn.commit()
+    return columns, rows
+
+
 def _query(sql: str, params: tuple = ()) -> pd.DataFrame:
     """Run SQL and return a DataFrame.
 
     Built from cursor.description rather than pandas.read_sql, which warns
     about non-SQLAlchemy connections.
+
+    Retries once on a lost connection. This is not defensive padding — it is
+    the normal case in deployment: Neon's free tier suspends compute after a
+    few minutes idle, and a Community Cloud app is idle almost always, so the
+    cached connection is usually dead when the next visitor arrives. Without
+    the retry the app serves errors until it is restarted by hand, because
+    cache_resource keeps returning the same dead object.
     """
     conn = _connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            columns = [c.name for c in cur.description]
-            rows = cur.fetchall()
+        columns, rows = _execute(conn, sql, params)
+    except _CONNECTION_LOST:
+        # Deliberately no rollback: on a dead connection it raises too, which
+        # is what masked the real error before. Drop the cached connection so
+        # the next call opens a fresh one, then retry exactly once. A second
+        # failure is a real outage and should surface.
+        _connection.clear()
+        conn = _connection()
+        columns, rows = _execute(conn, sql, params)
     except psycopg2.Error:
         # A failed query aborts the transaction; reset so the next one works.
         conn.rollback()
         raise
-    conn.commit()
 
     df = pd.DataFrame(rows, columns=columns)
 
