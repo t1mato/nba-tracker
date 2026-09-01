@@ -4,6 +4,7 @@ Everything tunable lives here so the pipeline code stays about *what* it does,
 not *where* things are or *how long* to wait.
 """
 
+import datetime as dt
 import os
 from pathlib import Path
 
@@ -43,6 +44,11 @@ MAX_RETRIES = 4               # attempts per call before giving up
 BACKOFF_BASE_SECONDS = 2.0    # exponential: 2s, 4s, 8s ...
 
 
+# The month a new NBA season begins. October, and stable enough to be a
+# constant rather than a lookup.
+SEASON_START_MONTH = 10
+
+
 # --- which games belong in the warehouse ------------------------------------
 # The first three characters of a game_id encode its type. Verified against the
 # full 2025-26 season (1401 games).
@@ -59,6 +65,29 @@ GAME_TYPE_BY_PREFIX = {
 
 # What we actually ingest. Preseason and All-Star are noise for this warehouse.
 IN_SCOPE_PREFIXES = frozenset({"002", "004", "005", "006"})
+
+
+# --- which season are we in ---------------------------------------------------
+
+def current_season(today: dt.date | None = None) -> str:
+    """The NBA season containing `today`, as "2025-26".
+
+    Seasons start in October and run into June, so the calendar year alone is
+    not the answer: 2026-03-01 belongs to 2025-26, not 2026-27.
+
+    The scheduled job derives the season rather than taking it as a parameter.
+    A hardcoded season is a time bomb — it works until October and then quietly
+    ingests nothing, which is the exact failure this pipeline is built to avoid.
+
+    Offseason dates (July through September) resolve to the season that just
+    finished, so the job keeps finding no new games until the new one tips off.
+    That is correct: there is genuinely nothing to fetch.
+    """
+    today = today or dt.date.today()
+    start_year = today.year if today.month >= SEASON_START_MONTH else today.year - 1
+    # "2025-26"; matches the label 020_load_dimensions.sql derives, including
+    # the century roll ("2099-00", the NBA's own convention).
+    return f"{start_year}-{(start_year + 1) % 100:02d}"
 
 
 def game_type(game_id: str) -> str:

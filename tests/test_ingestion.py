@@ -7,6 +7,7 @@ which is where the subtle bugs live.
 
 from __future__ import annotations
 
+import datetime as dt
 import time
 
 import numpy as np
@@ -14,7 +15,12 @@ import pandas as pd
 import pytest
 
 from src.ingestion import nba_client
-from src.ingestion.config import GAME_TYPE_BY_PREFIX, game_type, is_in_scope
+from src.ingestion.config import (
+    GAME_TYPE_BY_PREFIX,
+    current_season,
+    game_type,
+    is_in_scope,
+)
 from src.ingestion.ingest_games import (
     GAMES_COLUMNS,
     PLAYER_BOX_COLUMNS,
@@ -241,3 +247,41 @@ class TestCallRetries:
 
         assert nba_client._call("probe", bad_json_once) == "payload"
         assert len(attempts) == 2
+
+
+# --- season derivation -------------------------------------------------------
+
+class TestCurrentSeason:
+    """The scheduled job derives the season instead of taking it as a parameter.
+
+    A hardcoded "2025-26" works perfectly until October and then silently
+    ingests nothing — the exact silent failure the pipeline exists to avoid.
+    """
+
+    @pytest.mark.parametrize("today,expected", [
+        ("2025-10-21", "2025-26"),   # opening night
+        ("2025-12-31", "2025-26"),   # before the calendar roll
+        ("2026-01-01", "2025-26"),   # after it — same season
+        ("2026-06-13", "2025-26"),   # finals
+        ("2026-09-01", "2025-26"),   # offseason: the season that just ended
+        ("2026-09-30", "2025-26"),   # last day before the flip
+        ("2026-10-01", "2026-27"),   # first day of the new season
+    ])
+    def test_season_boundaries(self, today, expected):
+        assert current_season(dt.date.fromisoformat(today)) == expected
+
+    def test_flips_on_the_first_of_october_not_opening_night(self):
+        """October 1st, not the first game. The exact tip-off date moves every
+        year, and being a few weeks early costs nothing: the game list for a
+        season that has not started yet is simply empty."""
+        assert current_season(dt.date(2026, 9, 30)) == "2025-26"
+        assert current_season(dt.date(2026, 10, 1)) == "2026-27"
+
+    def test_century_roll_matches_the_sql_convention(self):
+        """"2099-00", not "2099-100" — the same convention the NBA uses for
+        1999-00, and what 020_load_dimensions.sql derives."""
+        assert current_season(dt.date(2099, 11, 1)) == "2099-00"
+        assert current_season(dt.date(2100, 1, 1)) == "2099-00"
+
+    def test_defaults_to_today(self):
+        assert current_season() == current_season(dt.date.today())

@@ -30,6 +30,9 @@ htmlcov/
 # Browser-automation artifacts (screenshots, console logs)
 .playwright-mcp/
 
+# Scheduled-job output (launchd writes here)
+logs/
+
 # macOS / editor cruft
 .DS_Store
 .idea/

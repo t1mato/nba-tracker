@@ -1,0 +1,70 @@
+# Tests, on every push and pull request.
+#
+# Runs against a real Postgres service container rather than mocking it. The
+# transform tests CREATE and DROP a throwaway database and execute the actual
+# .sql files, so without a real server they would skip — and a test suite that
+# silently skips its most valuable half is worse than one that fails.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Lets us re-run the suite by hand without pushing an empty commit.
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        # Matches docker-compose.yml so CI and local dev agree. Note the
+        # warehouse itself runs Postgres 18 on Neon; the version gap does not
+        # matter here because these tests build their own schema from our DDL.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nba
+          POSTGRES_PASSWORD: nba_dev_password
+          POSTGRES_DB: nba_tracker
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nba -d nba_tracker"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Both point at the service container. TEST_DATABASE_URL is what the
+      # transform fixture prefers; DATABASE_URL is the fallback. Neither is a
+      # secret — this database exists for 90 seconds and holds fixture rows.
+      # The real warehouse credential is deliberately NOT available to this
+      # workflow: tests have no business reaching production data.
+      DATABASE_URL: postgresql://nba:nba_dev_password@localhost:5432/nba_tracker
+      TEST_DATABASE_URL: postgresql://nba:nba_dev_password@localhost:5432/nba_tracker
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest tests/ -v
+
+      - name: Confirm the transform tests actually ran
+        # A guard against the failure this job exists to prevent: if the
+        # database were unreachable the suite would skip those tests and still
+        # report success. Assert they ran rather than trusting a green tick.
+        run: |
+          python -m pytest tests/test_transforms.py -q 2>&1 | tee result.txt
+          if grep -qi "skipped" result.txt; then
+            echo "::error::transform tests were SKIPPED — the database was not reachable"
+            exit 1
+          fi

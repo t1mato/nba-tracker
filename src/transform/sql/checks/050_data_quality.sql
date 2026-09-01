@@ -171,12 +171,24 @@ FROM (
 
 UNION ALL
 
--- Staleness is correct in September and alarming in January, and this file has
--- no way to tell those apart. So it reports the number and lets a human judge.
-SELECT 'warehouse_freshness', 'warning',
+-- Staleness means opposite things in September and January, so the severity
+-- depends on the month rather than the check being permanently toothless.
+--
+-- November through May the league is definitely playing, so a warehouse more
+-- than three days stale means the pipeline stopped and nobody noticed — an
+-- error. June through October covers the finals tail, the offseason and the
+-- October ramp-up, where staleness is expected, so it only warns.
+--
+-- Three days rather than one: the schedule has genuine gaps (All-Star break),
+-- and the ingestion job is self-healing, so a single missed night is not news.
+SELECT 'warehouse_freshness',
+       CASE WHEN extract(month FROM current_date) BETWEEN 11 AND 12
+              OR extract(month FROM current_date) BETWEEN 1 AND 5
+            THEN 'error' ELSE 'warning' END,
        CASE WHEN max(game_date) < current_date - 3 THEN 1 ELSE 0 END,
        'newest game is ' || (current_date - max(game_date)) || ' days old ('
-           || max(game_date) || ')'
+           || max(game_date) || '); in-season staleness is an error, '
+           || 'offseason staleness only warns'
 FROM dim_games
 
 ) checks

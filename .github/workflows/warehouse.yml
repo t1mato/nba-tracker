@@ -1,0 +1,87 @@
+# Rebuild the star schema from staging, then judge the result.
+#
+# This is the half of the nightly pipeline that CAN run on a hosted runner:
+# it only needs Postgres, and Neon is reachable from Actions. Ingestion cannot
+# run here — stats.nba.com black-holes datacenter IPs (verified on both Azure
+# and Oracle Cloud; see scripts/probe_api.py), so it runs on a laptop and
+# triggers this workflow when it finishes.
+name: Rebuild warehouse
+
+on:
+  # How this normally fires: scripts/nightly.sh calls `gh workflow run` after a
+  # successful local ingestion. Event-driven, not a guessed clock offset — a
+  # fixed schedule would transform stale data whenever ingestion ran late or
+  # not at all, and the checks would happily pass on it.
+  workflow_dispatch:
+
+  # Backstop. If the laptop has been off for days this still runs the data
+  # quality checks daily, so a stalled pipeline surfaces on its own instead of
+  # waiting to be noticed. The transforms are idempotent, so a run against
+  # unchanged staging is a harmless no-op.
+  schedule:
+    - cron: "0 17 * * *"   # 17:00 UTC = 10am PT, after the 8am local job
+
+concurrency:
+  # Never let two runs rebuild the same warehouse at once.
+  group: warehouse
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      # No dev dependencies: this job runs the pipeline, not the tests.
+      - run: pip install -r requirements.txt
+
+      - name: Fail early if the secret is missing
+        # Without this the transform step fails with a confusing "DATABASE_URL
+        # is not set" from deep inside config.py. Named check, obvious cause.
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL secret is not set on this repository"
+            exit 1
+          fi
+          echo "DATABASE_URL is set (${#DATABASE_URL} chars)"
+
+      - name: Rebuild the star schema
+        run: python -m src.transform.run_transforms
+
+      - name: Data quality checks
+        # Deliberately the last word. The transforms above will happily rebuild
+        # a warehouse out of bad staging data and report success; this is what
+        # turns "the job ran" into "the data is right".
+        run: python -m src.transform.run_checks
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### Warehouse rebuild"
+            echo ""
+            echo "| table | rows |"
+            echo "|---|---|"
+            python - <<'PY'
+          import os, psycopg2
+          conn = psycopg2.connect(os.environ["DATABASE_URL"])
+          with conn.cursor() as cur:
+              for t in ("dim_teams", "dim_players", "dim_games",
+                        "fact_player_game_stats", "fact_team_game_stats"):
+                  cur.execute(f"SELECT count(*) FROM {t}")
+                  print(f"| {t} | {cur.fetchone()[0]:,} |")
+              cur.execute("SELECT max(game_date) FROM dim_games")
+              print(f"| _newest game_ | {cur.fetchone()[0]} |")
+          conn.close()
+          PY
+          } >> "$GITHUB_STEP_SUMMARY"

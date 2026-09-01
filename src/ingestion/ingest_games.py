@@ -1,8 +1,15 @@
 """Ingest NBA box scores into the staging tables.
 
-    python -m src.ingestion.ingest_games                  # yesterday (the cron job)
+    python -m src.ingestion.ingest_games --catch-up       # the scheduled job
+    python -m src.ingestion.ingest_games                  # yesterday
     python -m src.ingestion.ingest_games 2026-01-15       # one specific date
     python -m src.ingestion.ingest_games --season 2025-26 # backfill a season
+
+--catch-up is what the scheduled job runs: it works out the current season,
+lists its games in one call, and fetches only the ones the warehouse does not
+already have. That makes the job self-healing rather than punctual — if it does
+not run for three days, the next run collects all three. A job that only ever
+looks at yesterday turns every missed night into a permanent hole.
 
 Idempotent throughout: every write is an upsert on the table's natural key, so
 re-running any date updates rows in place and never duplicates them.
@@ -20,7 +27,7 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 from src.ingestion import nba_client
-from src.ingestion.config import get_database_url, is_in_scope
+from src.ingestion.config import current_season, get_database_url, is_in_scope
 
 log = logging.getLogger("ingest")
 
@@ -214,6 +221,8 @@ def main(argv: list[str] | None = None) -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("date", nargs="?", help="YYYY-MM-DD (default: yesterday)")
     parser.add_argument("--season", help='backfill a whole season, e.g. "2025-26"')
+    parser.add_argument("--catch-up", action="store_true",
+                        help="fetch every game of the current season the warehouse lacks")
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -223,7 +232,14 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     with psycopg2.connect(get_database_url()) as conn:
-        if args.season:
+        if args.catch_up:
+            # Derive the season rather than hardcoding it: a literal "2025-26"
+            # would keep working right up until October and then silently
+            # ingest nothing.
+            season = current_season()
+            log.info("catch-up for season %s", season)
+            failures = ingest_season(conn, season)
+        elif args.season:
             failures = ingest_season(conn, args.season)
         else:
             # Default to yesterday: the scheduled job ingests completed games,
